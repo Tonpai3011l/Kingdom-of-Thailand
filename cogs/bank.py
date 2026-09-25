@@ -1,9 +1,8 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands, ui
-import json
-import os
 import time
+from storage import HybridJsonStorage
 
 BANK_DB_FILE = "json/bank_data.json"
 
@@ -531,9 +530,6 @@ class CentralBankView(ui.View):
 
     async def check_gov_role(self, interaction: discord.Interaction) -> bool:
         if interaction.user.guild_permissions.administrator: return True
-        gov_role_id = os.getenv('GOV_ROLE_ID')
-        if gov_role_id and gov_role_id.isdigit():
-            return any(r.id == int(gov_role_id) for r in interaction.user.roles)
         return any(r.name == "รัฐบาล" for r in interaction.user.roles)
 
     @ui.button(label="เบิกงบประมาณ", style=discord.ButtonStyle.danger, emoji="💸", custom_id="cbank_withdraw_budget")
@@ -632,6 +628,7 @@ class SubBankView(ui.View):
 class Bank(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.storage = HybridJsonStorage(BANK_DB_FILE)
         self.load_data()
         self.interest_loop.start()
 
@@ -687,7 +684,8 @@ class Bank(commands.Cog):
         self.save_data()
 
     def load_data(self):
-        if not os.path.exists(BANK_DB_FILE):
+        self.data = self.storage.load()
+        if self.data is None:
             self.data = {
                 "central": {
                     "rates": {
@@ -700,14 +698,9 @@ class Bank(commands.Cog):
                 "sub_banks": {}
             }
             self.save_data()
-        else:
-            with open(BANK_DB_FILE, "r", encoding="utf-8") as f:
-                self.data = json.load(f)
 
     def save_data(self):
-        os.makedirs(os.path.dirname(BANK_DB_FILE), exist_ok=True)
-        with open(BANK_DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(self.data, f, indent=4, ensure_ascii=False)
+        self.storage.save(self.data)
 
     def get_subbank_balance(self, bank_name, user_id):
         return self.data["sub_banks"].get(bank_name, {}).get("accounts", {}).get(user_id, {}).get("balance", 0)

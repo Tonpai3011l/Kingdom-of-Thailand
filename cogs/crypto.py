@@ -1,8 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
-import json
-import os
+from storage import HybridJsonStorage
 
 DB_FILE = "json/crypto_data.json"
 
@@ -582,18 +581,17 @@ class CryptoView(ui.View):
 class Crypto(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.storage = HybridJsonStorage(DB_FILE)
         self.load_data()
 
     async def cog_load(self):
         self.bot.add_view(CryptoView(self))
 
     def load_data(self):
-        if not os.path.exists(DB_FILE):
+        self.data = self.storage.load()
+        if self.data is None:
             self.data = {"market": {}, "portfolios": {}, "status": "open", "admins": {"users": [], "roles": []}}
             self.save_data()
-        else:
-            with open(DB_FILE, "r") as f:
-                self.data = json.load(f)
 
         # การย้ายข้อมูล (Migration) สำหรับโครงสร้างใหม่
         migrated = False
@@ -618,8 +616,7 @@ class Crypto(commands.Cog):
             self.data["admins"] = {"users": [], "roles": []}
 
     def save_data(self):
-        with open(DB_FILE, "w") as f:
-            json.dump(self.data, f, indent=4)
+        self.storage.save(self.data)
 
     def get_market_price(self, symbol):
         return self.data["market"].get(symbol)

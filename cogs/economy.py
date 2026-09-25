@@ -1,39 +1,34 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import json
-import os
 import random
+from storage import HybridJsonStorage
 
 DB_FILE = "json/economy_data.json"
 
 class Economy(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.storage = HybridJsonStorage(DB_FILE)
         self.load_data() # โหลดข้อมูลเมื่อเริ่มบอท
 
     # ฟังก์ชันโหลดข้อมูลผู้ใช้จากไฟล์ JSON
     def load_data(self):
-        if not os.path.exists(DB_FILE):
-            # ถ้าไม่มีไฟล์ ให้สร้างข้อมูลเก็บเงินเริ่มต้นสำหรับบอท (System)
-            self.users = {"system_bank": {"wallet": 1000000000, "bank": 1000000000}} 
+        self.users = self.storage.load()
+        if self.users is None:
+            self.users = {"system_bank": {"wallet": 1000000000, "bank": 1000000000}}
             self.save_data()
-        else:
-            with open(DB_FILE, "r") as f:
-                self.users = json.load(f)
-            # Migration check
-            migrated = False
-            for user_id, value in self.users.items():
-                if isinstance(value, int):
-                    self.users[user_id] = {"wallet": value, "bank": 0}
-                    migrated = True
-            if migrated:
-                self.save_data()
+        migrated = False
+        for user_id, value in self.users.items():
+            if isinstance(value, int):
+                self.users[user_id] = {"wallet": value, "bank": 0}
+                migrated = True
+        if migrated:
+            self.save_data()
 
     # ฟังก์ชันบันทึกข้อมูลลงไฟล์ JSON
     def save_data(self):
-        with open(DB_FILE, "w") as f:
-            json.dump(self.users, f, indent=4)
+        self.storage.save(self.users)
 
     def get_balance(self, user_id):
         user_id = str(user_id)

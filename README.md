@@ -80,13 +80,15 @@
 
 ## 🛠️ โครงสร้างไฟล์ (Project Structure)
 - `main.py`: จุดเริ่มต้นการรันบอทและลงทะเบียน View ถาวร
+- `storage.py`: ชั้นจัดเก็บข้อมูลแบบ MongoDB พร้อม fallback ไปยัง JSON
+- `keep_alive.py`: health server สำหรับ Render และตัวเชื่อมต่อ MongoDB
 - `cogs/`:
   - `bank.py`: ธนาคารกลาง, ธนาคารพาณิชย์, และระบบดอกเบี้ย
   - `lottery.py`: ระบบสลากกินแบ่งแบบครบวงจร
   - `economy.py`: ระบบพื้นฐานกระเป๋าเงินและ Log ธุรกรรม
   - `crypto.py`: ระบบเทรดหุ้นและคริปโต
   - `thailand.py`: ระบบท่องเที่ยว 77 จังหวัด
-- `json/`: ฐานข้อมูลไฟล์ JSON ที่ใช้เก็บยอดเงิน, สลาก, และข้อมูลหุ้น
+- `json/`: ไฟล์สำรอง/โหมด fallback ที่ถูก ignore ไม่ให้ Git ติดตาม
 
 ---
 
@@ -96,6 +98,10 @@
 3. หากใช้ MongoDB ให้ตั้งค่า `MONGODB_URI` และตั้งค่า `MONGODB_DATABASE` ได้ (ค่าเริ่มต้นคือ `kingdom_of_thailand`)
 4. รันบอท: `python main.py`
 
+ตัวแปรเสริมสำหรับ Role (ไม่บังคับ): `GOV_ROLE_ID` หรือ `GOV_ROLE_NAME` สำหรับสิทธิ์รัฐบาล และ `ABROAD_ROLE_ID` หรือ `ABROAD_ROLE_NAME` สำหรับ Role ต่างประเทศ หากไม่ตั้งค่า ระบบจะค้นหาจากชื่อเริ่มต้นให้เอง
+
 บน Render ให้ใช้คำสั่งเริ่มต้น `python main.py` และตั้งค่า `DISCORD_TOKEN`, `MONGODB_URI` และ `MONGODB_DATABASE` ใน Environment Variables ระบบจะเปิด health endpoint ที่ `/health` บนพอร์ตจากตัวแปร `PORT` โดยอัตโนมัติ ส่วนข้อมูล runtime ใน `json/` ยังคงถูกใช้งานในเครื่อง/instance แต่ถูก ignore ไม่ให้ Git ติดตามไฟล์
+
+เมื่อเชื่อมต่อ MongoDB สำเร็จ ข้อมูลเกมจะถูกเก็บใน database ที่ระบุใน `MONGODB_DATABASE` และ collection `json_files` (เปลี่ยนชื่อได้ด้วย `MONGODB_COLLECTION`) โดยใช้ path เช่น `json/economy_data.json` เป็น `_id` ของ document หาก MongoDB เชื่อมต่อไม่ได้ ระบบจะอ่านและบันทึกลงไฟล์ใน `json/` แทน และจะสร้างโฟลเดอร์/ไฟล์ให้อัตโนมัติ
 
 *Powered by Antigravity AI Ecosystem*

@@ -1,9 +1,9 @@
 import discord
 from discord.ext import commands
 from discord import app_commands, ui
-import json
 import os
 import re
+from storage import HybridJsonStorage
 
 DB_FILE = "json/lottery_data.json"
 
@@ -231,13 +231,15 @@ class LotteryMainView(ui.View):
 class Lottery(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.storage = HybridJsonStorage(DB_FILE)
         self.load_data()
 
     async def cog_load(self):
         self.bot.add_view(LotteryMainView(self))
 
     def load_data(self):
-        if not os.path.exists(DB_FILE):
+        self.data = self.storage.load()
+        if self.data is None:
             self.data = {
                 "prizes": {"first": None, "last_3": None, "last_2": None},
                 "tickets": {},
@@ -245,15 +247,9 @@ class Lottery(commands.Cog):
                 "status": "open"
             }
             self.save_data()
-        else:
-            with open(DB_FILE, "r") as f:
-                self.data = json.load(f)
                 
     def save_data(self):
-        # Create folder if not exists just to be safe
-        os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
-        with open(DB_FILE, "w") as f:
-            json.dump(self.data, f, indent=4)
+        self.storage.save(self.data)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -343,11 +339,14 @@ class Lottery(commands.Cog):
 
     @app_commands.command(name="draw_lottery", description="[Admin] สุ่มออกรางวัลสลากกินแบ่งอัตโนมัติ (ปิดรับแทงทันที)")
     async def draw_lottery(self, interaction: discord.Interaction):
-        gov_role_id = os.getenv('GOV_ROLE_ID')
-        if gov_role_id and gov_role_id.isdigit():
+        gov_role_id = os.getenv("GOV_ROLE_ID", "").strip()
+        government_role_name = os.getenv(
+            "GOV_ROLE_NAME", "[ 𝐆𝐨𝐯𝐞𝐫𝐧𝐦𝐞𝐧𝐭 | รัฐบาล ]"
+        ).strip()
+        if gov_role_id.isdigit():
             has_gov_role = any(role.id == int(gov_role_id) for role in interaction.user.roles)
         else:
-            has_gov_role = any(role.name == "[ 𝐆𝐨𝐯𝐞𝐫𝐧𝐦𝐞𝐧𝐭 | รัฐบาล ]" for role in interaction.user.roles)
+            has_gov_role = any(role.name == government_role_name for role in interaction.user.roles)
             
         if not has_gov_role and not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("<:w_:1459388961943457934> คุณไม่มีสิทธิ์ใช้คำสั่งนี้ (ต้องมี Role ID ที่กำหนด หรือเป็นผู้ดูแลระบบ)", ephemeral=True)

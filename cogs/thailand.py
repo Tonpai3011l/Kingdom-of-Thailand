@@ -1,13 +1,28 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import json
 import os
 import random
 import asyncio
+from storage import HybridJsonStorage
 
 PROVINCES_FILE = "json/provinces.json"
 LOCATIONS_FILE = "json/user_locations.json"
+DEFAULT_ABROAD_ROLE_NAME = "ต่างประเทศ"
+
+
+def get_abroad_role(guild):
+    if guild is None:
+        return None
+
+    abroad_role_id = os.getenv("ABROAD_ROLE_ID", "").strip()
+    if abroad_role_id.isdigit():
+        role = guild.get_role(int(abroad_role_id))
+        if role:
+            return role
+
+    role_name = os.getenv("ABROAD_ROLE_NAME", DEFAULT_ABROAD_ROLE_NAME).strip()
+    return discord.utils.get(guild.roles, name=role_name)
 
 class CountryInputModal(discord.ui.Modal, title="ระบุประเทศที่ต้องการเดินทางไป"):
     country_name = discord.ui.TextInput(
@@ -68,15 +83,9 @@ class CountryInputModal(discord.ui.Modal, title="ระบุประเทศ�
         self.cog.save_locations()
 
         # จัดการเรื่อง Role ต่างประเทศ
-        abroad_role_id = os.getenv('ABROAD_ROLE_ID')
-        if abroad_role_id:
-            try:
-                role_id = int(abroad_role_id)
-                role = interaction.guild.get_role(role_id)
-                if role:
-                    await interaction.user.add_roles(role)
-            except Exception as e:
-                print(f"Error handling abroad role: {e}")
+        role = get_abroad_role(interaction.guild)
+        if role:
+            await interaction.user.add_roles(role)
 
         self.cog.traveling_users.remove(user_id)
         await interaction.followup.send(f"✈️ คุณเดินทางมาถึง **{target_location}** โดย**{self.vehicle}** เรียบร้อยแล้ว! (ใช้เวลาวน {time_text})", ephemeral=True)
@@ -85,34 +94,26 @@ class CountryInputModal(discord.ui.Modal, title="ระบุประเทศ�
 class ThailandMap(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.provinces_storage = HybridJsonStorage(PROVINCES_FILE)
+        self.locations_storage = HybridJsonStorage(LOCATIONS_FILE)
         self.load_data()
         self.traveling_users = set()  # เก็บรายชื่อคนกำลังเดินทาง
 
     # โหลดข้อมูลจังหวัดและตำแหน่งผู้เล่น
     def load_data(self):
-        if not os.path.exists(PROVINCES_FILE):
-             # ถ้าไม่มีไฟล์ ควรสร้างค่าเริ่มต้นไว้ แต่ตอนนี้เราถือว่ามีไฟล์แล้ว
-             self.provinces = {}
-        else:
-            with open(PROVINCES_FILE, "r", encoding="utf-8") as f:
-                self.provinces = json.load(f)
-
-        if not os.path.exists(LOCATIONS_FILE):
+        self.provinces = self.provinces_storage.load(default={})
+        self.locations = self.locations_storage.load()
+        if self.locations is None:
             self.locations = {"users": {}, "dashboard": None}
             self.save_locations()
-        else:
-            with open(LOCATIONS_FILE, "r", encoding="utf-8") as f:
-                self.locations = json.load(f)
-                # Migration to new structure if needed
-                if "users" not in self.locations:
-                    old_data = self.locations
-                    self.locations = {"users": old_data, "dashboard": None}
-                    self.save_locations()
+        if "users" not in self.locations:
+            old_data = self.locations
+            self.locations = {"users": old_data, "dashboard": None}
+            self.save_locations()
 
     # บันทึกตำแหน่งผู้เล่น
     def save_locations(self):
-        with open(LOCATIONS_FILE, "w", encoding="utf-8") as f:
-            json.dump(self.locations, f, indent=4)
+        self.locations_storage.save(self.locations)
 
     @app_commands.command(name="travel", description="เดินทางไปยังจังหวัดต่างๆ หรือ ต่างประเทศ")
     @app_commands.describe(
@@ -173,15 +174,9 @@ class ThailandMap(commands.Cog):
         self.save_locations()
 
         # จัดการเรื่อง Role ต่างประเทศ (เช็คและลบถ้ามี)
-        abroad_role_id = os.getenv('ABROAD_ROLE_ID')
-        if abroad_role_id:
-            try:
-                role_id = int(abroad_role_id)
-                role = interaction.guild.get_role(role_id)
-                if role and role in interaction.user.roles:
-                    await interaction.user.remove_roles(role)
-            except:
-                pass
+        role = get_abroad_role(interaction.guild)
+        if role and role in interaction.user.roles:
+            await interaction.user.remove_roles(role)
 
         self.traveling_users.remove(user_id)
         await interaction.followup.send(f"📍 คุณเดินทางมาถึง **{target_province}** โดย**{vehicle}** แล้ว! (ใช้เวลาเดินทาง {time_text})")
