@@ -49,19 +49,20 @@ def get_database():
 
 @app.get("/")
 def health_check():
-    return jsonify({"status": "ok", "service": "kingdom-of-thailand-bot"})
+    return jsonify({"ok": 1})
 
 
 @app.get("/health")
 def health_status():
     if mongo_database is None:
-        return jsonify({"status": "degraded", "mongodb": "disconnected", "error": mongo_error}), 503
+        return jsonify({"ok": 0}), 503
 
     try:
         mongo_client.admin.command("ping")
         return jsonify({"status": "ok", "mongodb": "connected"})
     except PyMongoError as error:
-        return jsonify({"status": "degraded", "mongodb": "disconnected", "error": str(error)}), 503
+        logging.warning("MongoDB health check failed: %s", error)
+        return jsonify({"ok": 0}), 503
 
 
 def start_keep_alive():
