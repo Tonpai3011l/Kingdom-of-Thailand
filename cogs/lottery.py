@@ -25,14 +25,20 @@ class LotteryModal(ui.Modal):
 
     async def on_submit(self, interaction: discord.Interaction):
         num_str = self.number_input.value
+        
+        # --- Check status (ด่านที่ 1: สถานะปิดอยู่ห้ามซื้อ) ---
+        if self.cog.data.get("status") != "open":
+            await interaction.response.send_message("<:w_:1459388961943457934> ขออภัยครับ ขณะนี้ปิดรับซื้อสลากแล้ว (กำลังรอลุ้นรางวัลหรือขึ้นงวดใหม่)", ephemeral=True)
+            return
+
         if not re.fullmatch(r'\d{6}', num_str):
-            await interaction.response.send_message("❌ กรุณาระบุเป็นตัวเลข 6 หลักให้ถูกต้อง (0-9 เท่านั้น)", ephemeral=True)
+            await interaction.response.send_message("<:w_:1459388961943457934> กรุณาระบุเป็นตัวเลข 6 หลักให้ถูกต้อง (0-9 เท่านั้น)", ephemeral=True)
             return
             
         # Check economy
         economy_cog = self.cog.bot.get_cog('Economy')
         if not economy_cog:
-            await interaction.response.send_message("❌ ระบบกระเป๋าเงินมีปัญหา ลองเรียกแอดมินมาดูที", ephemeral=True)
+            await interaction.response.send_message("<:w_:1459388961943457934> ระบบกระเป๋าเงินมีปัญหา ลองเรียกแอดมินมาดูที", ephemeral=True)
             return
             
         user_id = str(interaction.user.id)
@@ -40,7 +46,7 @@ class LotteryModal(ui.Modal):
         ticket_price = 80
         
         if bal['wallet'] < ticket_price:
-            await interaction.response.send_message(f"❌ เงินในกระเป๋าไม่พอ! (ต้องการ {ticket_price} บาท)", ephemeral=True)
+            await interaction.response.send_message(f"<:w_:1459388961943457934> เงินในกระเป๋าไม่พอ! (ต้องการ {ticket_price} บาท)", ephemeral=True)
             return
             
         economy_cog.update_balance(user_id, -ticket_price, "wallet")
@@ -57,7 +63,7 @@ class LotteryModal(ui.Modal):
         self.cog.save_data()
         
         type_display = "2 ตัวท้าย" if self.bet_type == "last_2" else "3 ตัวท้าย"
-        await interaction.response.send_message(f"✅ ซื้อสลาก **{num_str}** แบบลุ้น **{type_display}** เรียบร้อยแล้ว!\n*(หักเงินจาก Wallet {ticket_price} บาท)*", ephemeral=True)
+        await interaction.response.send_message(f"<:c_:1459387176516190312> ซื้อสลาก **{num_str}** แบบลุ้น **{type_display}** เรียบร้อยแล้ว!\n*(หักเงินจาก Wallet {ticket_price} บาท)*", ephemeral=True)
 
         if hasattr(economy_cog, 'log_transaction'):
             log_emb = discord.Embed(title="🎫 ซื้อสลากกินแบ่ง", color=discord.Color.blue())
@@ -73,10 +79,14 @@ class LotteryTypeView(ui.View):
 
     @ui.button(label="ลุ้นเลขท้าย 2 ตัว (80 บาท)", style=discord.ButtonStyle.primary, row=0)
     async def btn_last2(self, interaction: discord.Interaction, button: ui.Button):
+        if self.cog.data.get("status") != "open":
+            return await interaction.response.send_message("<:w_:1459388961943457934> ขออภัยครับ ขณะนี้ปิดรับซื้อสลากแล้ว", ephemeral=True)
         await interaction.response.send_modal(LotteryModal(self.cog, "last_2"))
 
     @ui.button(label="ลุ้นเลขท้าย 3 ตัว (80 บาท)", style=discord.ButtonStyle.primary, row=0)
     async def btn_last3(self, interaction: discord.Interaction, button: ui.Button):
+        if self.cog.data.get("status") != "open":
+            return await interaction.response.send_message("<:w_:1459388961943457934> ขออภัยครับ ขณะนี้ปิดรับซื้อสลากแล้ว", ephemeral=True)
         await interaction.response.send_modal(LotteryModal(self.cog, "last_3"))
 
 class LotteryMainView(ui.View):
@@ -99,6 +109,9 @@ class LotteryMainView(ui.View):
 
     @ui.button(emoji="🛒", label=" ซื้อสลาก", style=discord.ButtonStyle.success, custom_id="lottery_buy_btn")
     async def buy_button(self, interaction: discord.Interaction, button: ui.Button):
+        if self.cog.data.get("status") != "open":
+            return await interaction.response.send_message("<:w_:1459388961943457934> ขณะนี้ปิดรับซื้อสลากแล้วครับ", ephemeral=True)
+            
         embed = discord.Embed(title="🎫 เลือกประเภทสลาก", description="สลากทุกใบราคา 80 บาท\nโดยคุณจะได้ระบุตัวเลข 6 หลักด้วยตัวเองทั้งหมด!", color=discord.Color.blue())
         await interaction.response.send_message(embed=embed, view=LotteryTypeView(self.cog), ephemeral=True)
 
@@ -112,12 +125,18 @@ class LotteryMainView(ui.View):
             await interaction.response.send_message("คุณยังไม่มีสลากที่รอตรวจผลเลย (หรือสลากทั้งหมดของคุณตรวจรับเงินไปหมดแล้ว)", ephemeral=True)
             return
             
+        # จำกัดการแสดงผลไม่เกิน 20 ใบ เพื่อป้องกันข้อความยาวเกินไป
+        max_display = 20
+        display_unclaimed = unclaimed[:max_display]
         txt = ""
-        for i, t in enumerate(unclaimed, 1):
+        for i, t in enumerate(display_unclaimed, 1):
             t_str = "ลุ้น 2 ตัวท้าย" if t["type"] == "last_2" else "ลุ้น 3 ตัวท้าย"
             txt += f"{i}. **{t['number']}** ({t_str})\n"
             
-        embed = discord.Embed(title="🎟️ สลากที่คุณถือครองอยู่", description=txt, color=discord.Color.purple())
+        if len(unclaimed) > max_display:
+            txt += f"\n*...และยังมีสลากรายอื่นๆ อีก {len(unclaimed) - max_display} ใบในระบบ*"
+            
+        embed = discord.Embed(title=f"🎟️ สลากที่คุณถือครองอยู่ (ทั้งหมด {len(unclaimed)} ใบ)", description=txt, color=discord.Color.purple())
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @ui.button(emoji="🔍", label=" ตรวจสลาก", style=discord.ButtonStyle.primary, custom_id="lottery_check_btn")
@@ -143,9 +162,13 @@ class LotteryMainView(ui.View):
         prize_last3 = prizes.get("last_3", "")
         prize_last2 = prizes.get("last_2", "")
         
+        total_processed = 0
+        winning_tickets = []
+        losing_count = 0
         has_win = False
-        
+
         for idx in unclaimed_idx:
+            total_processed += 1
             t = tickets[idx]
             num = t["number"]
             b_type = t["type"]
@@ -162,18 +185,29 @@ class LotteryMainView(ui.View):
                 # Normal check based on bet type
                 if b_type == "last_2" and prize_last2 and num[-2:] == prize_last2:
                     won_amt = 2000
-                    win_msg = "✅ **เลขท้าย 2 ตัว**"
+                    win_msg = "<:c_:1459387176516190312> **เลขท้าย 2 ตัว**"
                 elif b_type == "last_3" and prize_last3 and num[-3:] == prize_last3:
                     won_amt = 4000
-                    win_msg = "✅ **เลขท้าย 3 ตัว**"
+                    win_msg = "<:c_:1459387176516190312> **เลขท้าย 3 ตัว**"
                     
             if won_amt > 0:
                 total_won += won_amt
-                result_txt += f"สลาก **{num}**: {win_msg} (รับกำไร {won_amt:,} บาท)\n"
+                winning_tickets.append(f"สลาก **{num}**: {win_msg} (+{won_amt:,} บาท)")
                 has_win = True
             else:
-                result_txt += f"สลาก **{num}**: ❌ ไม่ถูกรางวัล\n"
+                losing_count += 1
                 
+        # สร้างข้อความสรุปผล
+        result_txt = f"📦 ตรวจสลากทั้งหมด **{total_processed}** ใบ\n"
+        if winning_tickets:
+            result_txt += "--- **รายการที่ถูกรางวัล** ---\n" + "\n".join(winning_tickets[:15])
+            if len(winning_tickets) > 15:
+                result_txt += f"\n*(และสลากที่ถูกรางวัลรายอื่นๆ อีก {len(winning_tickets)-15} ใบ)*"
+            result_txt += "\n--------------------------\n"
+        
+        if losing_count > 0:
+            result_txt += f"<:w_:1459388961943457934> ไม่ถูกรางวัลจำนวน **{losing_count}** ใบ\n"
+
         self.cog.save_data()
         
         if total_won > 0 and economy_cog:
@@ -198,6 +232,9 @@ class Lottery(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.load_data()
+
+    async def cog_load(self):
+        self.bot.add_view(LotteryMainView(self))
 
     def load_data(self):
         if not os.path.exists(DB_FILE):
@@ -274,7 +311,7 @@ class Lottery(commands.Cog):
         self.data["dashboard"] = {"channel_id": interaction.channel.id, "message_id": msg.id}
         self.save_data()
         await self._update_dashboard()
-        await interaction.followup.send("✅ สร้างบอร์ดขายลอตเตอรี่สำเร็จ", ephemeral=True)
+        await interaction.followup.send("<:c_:1459387176516190312> สร้างบอร์ดขายลอตเตอรี่สำเร็จ", ephemeral=True)
 
     @app_commands.command(name="lottery_status", description="[Admin] เปิด/ปิด การซื้อสลาก")
     @app_commands.default_permissions(administrator=True)
@@ -286,13 +323,13 @@ class Lottery(commands.Cog):
         self.data["status"] = mode.value
         self.save_data()
         await self._update_dashboard()
-        await interaction.response.send_message(f"✅ ปรับสถานะเป็นชือ {mode.name} แล้ว", ephemeral=True)
+        await interaction.response.send_message(f"<:c_:1459387176516190312> ปรับสถานะเป็นชือ {mode.name} แล้ว", ephemeral=True)
 
     @app_commands.command(name="set_lottery_prize", description="[Admin] ตั้งค่าผลรางวัลสลาก")
     @app_commands.default_permissions(administrator=True)
     async def set_lottery_prize(self, interaction: discord.Interaction, first: str, last_3: str, last_2: str):
         if not re.fullmatch(r'\d{6}', first) or not re.fullmatch(r'\d{3}', last_3) or not re.fullmatch(r'\d{2}', last_2):
-            await interaction.response.send_message("❌ กรุณาตรวจสอบตัวเลข\n- ชุดที่ 1 (first) = 6 หลัก\n- ชุดที่ 2 (last_3) = 3 หลัก\n- ชุดที่ 3 (last_2) = 2 หลัก", ephemeral=True)
+            await interaction.response.send_message("<:w_:1459388961943457934> กรุณาตรวจสอบตัวเลข\n- ชุดที่ 1 (first) = 6 หลัก\n- ชุดที่ 2 (last_3) = 3 หลัก\n- ชุดที่ 3 (last_2) = 2 หลัก", ephemeral=True)
             return
             
         self.data["prizes"] = {
@@ -302,7 +339,7 @@ class Lottery(commands.Cog):
         }
         self.save_data()
         await self._update_dashboard() # Update dashboard to show winning numbers
-        await interaction.response.send_message(f"✅ บันทึกผลรางวัลงวดนี้แล้ว:\n- รางวัลพิเศษ (6 ตัว): {first}\n- เลขท้าย 3 ตัว: {last_3}\n- เลขท้าย 2 ตัว: {last_2}\n*(ผู้เล่นสามารถกดตรวจสลากได้เลยที่หน้าบอร์ด)*", ephemeral=True)
+        await interaction.response.send_message(f"<:c_:1459387176516190312> บันทึกผลรางวัลงวดนี้แล้ว:\n- รางวัลพิเศษ (6 ตัว): {first}\n- เลขท้าย 3 ตัว: {last_3}\n- เลขท้าย 2 ตัว: {last_2}\n*(ผู้เล่นสามารถกดตรวจสลากได้เลยที่หน้าบอร์ด)*", ephemeral=True)
 
     @app_commands.command(name="draw_lottery", description="[Admin] สุ่มออกรางวัลสลากกินแบ่งอัตโนมัติ (ปิดรับแทงทันที)")
     async def draw_lottery(self, interaction: discord.Interaction):
@@ -313,7 +350,7 @@ class Lottery(commands.Cog):
             has_gov_role = any(role.name == "[ 𝐆𝐨𝐯𝐞𝐫𝐧𝐦𝐞𝐧𝐭 | รัฐบาล ]" for role in interaction.user.roles)
             
         if not has_gov_role and not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้ (ต้องมี Role ID ที่กำหนด หรือเป็นผู้ดูแลระบบ)", ephemeral=True)
+            await interaction.response.send_message("<:w_:1459388961943457934> คุณไม่มีสิทธิ์ใช้คำสั่งนี้ (ต้องมี Role ID ที่กำหนด หรือเป็นผู้ดูแลระบบ)", ephemeral=True)
             return
             
         import random
@@ -340,7 +377,7 @@ class Lottery(commands.Cog):
         self.data["status"] = "open" # เปิดรับแทงอัตโนมัติ
         self.save_data()
         await self._update_dashboard()
-        await interaction.response.send_message("✅ ล้างข้อมูลสลากและรางวัลออกเรียบร้อย พร้อมเปิดรับซื้องวดใหม่แล้ว!", ephemeral=True)
+        await interaction.response.send_message("<:c_:1459387176516190312> ล้างข้อมูลสลากและรางวัลออกเรียบร้อย พร้อมเปิดรับซื้องวดใหม่แล้ว!", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Lottery(bot))

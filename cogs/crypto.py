@@ -584,6 +584,9 @@ class Crypto(commands.Cog):
         self.bot = bot
         self.load_data()
 
+    async def cog_load(self):
+        self.bot.add_view(CryptoView(self))
+
     def load_data(self):
         if not os.path.exists(DB_FILE):
             self.data = {"market": {}, "portfolios": {}, "status": "open", "admins": {"users": [], "roles": []}}
@@ -605,8 +608,8 @@ class Crypto(commands.Cog):
         if migrated:
             self.save_data()
 
-        if "dashboard" not in self.data:
-            self.data["dashboard"] = None
+        if not isinstance(self.data.get("dashboard"), dict):
+            self.data["dashboard"] = {}
         
         if "status" not in self.data:
             self.data["status"] = "open"

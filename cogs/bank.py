@@ -635,6 +635,10 @@ class Bank(commands.Cog):
         self.load_data()
         self.interest_loop.start()
 
+    async def cog_load(self):
+        self.bot.add_view(CentralBankView(self))
+        self.bot.add_view(SubBankView(self))
+
     def cog_unload(self):
         self.interest_loop.cancel()
 

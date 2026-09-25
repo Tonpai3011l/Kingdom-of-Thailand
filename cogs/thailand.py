@@ -8,7 +8,6 @@ import asyncio
 
 PROVINCES_FILE = "json/provinces.json"
 LOCATIONS_FILE = "json/user_locations.json"
-COUNTRIES_FILE = "json/countries.json"
 
 class CountryInputModal(discord.ui.Modal, title="ระบุประเทศที่ต้องการเดินทางไป"):
     country_name = discord.ui.TextInput(
@@ -97,12 +96,6 @@ class ThailandMap(commands.Cog):
         else:
             with open(PROVINCES_FILE, "r", encoding="utf-8") as f:
                 self.provinces = json.load(f)
-
-        if not os.path.exists(COUNTRIES_FILE):
-            self.countries = []
-        else:
-            with open(COUNTRIES_FILE, "r", encoding="utf-8") as f:
-                self.countries = json.load(f)
 
         if not os.path.exists(LOCATIONS_FILE):
             self.locations = {"users": {}, "dashboard": None}
